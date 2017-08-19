@@ -1,0 +1,9 @@
+[submodule "odin-glfw"]
+	path = odin-glfw
+	url = https://github.com/vassvik/odin-glfw.git
+[submodule "odin-gl"]
+	path = odin-gl
+	url = https://github.com/vassvik/odin-gl.git
+[submodule "odin-gl_font"]
+	path = odin-gl_font
+	url = https://github.com/vassvik/odin-gl_font.git
