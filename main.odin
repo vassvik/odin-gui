@@ -4,15 +4,26 @@ import	"core:strings.odin";
 
 import	"shared:odin-glfw/glfw.odin";
 import	"shared:odin-gl/gl.odin";
+import font_gl "shared:odin-gl_font/font_opengl.odin";
+
+using import "shared:random.odin"
 
 import gui "gui.odin";
 
+
+append_to_log :: proc(log: ^[dynamic]string, fmt_string: string, vals: ...any) {
+	a := fmt.aprintf(fmt_string, ...vals);
+	append(log, a);
+}
+temp_log: [dynamic]string;
+
 main :: proc() {
 	//
-	resx, resy := 1600, 900;
-	window := glfw.init_helper(resx, resy, "odin-gui", 3, 3, 0, true);
+	gui.window_size = [2]int{1600, 900};
+	window := glfw.init_helper(gui.window_size[0], gui.window_size[1], "odin-gui", 3, 3, 0, true);
 
 	//
+	glfw.SetWindowSizeCallback(window, windowsize_callback);
 	glfw.SetCharCallback(window, char_callback);
 	glfw.SetKeyCallback(window, key_callback);
 	glfw.SetMouseButtonCallback(window, button_callback);
@@ -20,7 +31,19 @@ main :: proc() {
 	glfw.SetScrollCallback(window, mousewheel_callback);
 
 	// 
-	gl.load_up_to(3, 3, proc(p: rawptr, name: string) do (cast(^rawptr)p)^ = rawptr(glfw.GetProcAddress(&name[0])); );
+	gl.load_up_to(4, 5, proc(p: rawptr, name: string) do (cast(^rawptr)p)^ = rawptr(glfw.GetProcAddress(&name[0])); );
+
+	//
+	//if !font.init("extra/font_3x1.bin", "shaders/shader_font.vs", "shaders/shader_font.fs") do return;  
+	sizes := [...]int{72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12};
+	codepoints: [95]rune;
+	for i in 0..95 do codepoints[i] = rune(32+i);
+	
+	font, success_font := font_gl.init_from_ttf_gl("C:/windows/fonts/consola.ttf", "Consola", false, sizes[...], codepoints[...]);
+	if !success_font {
+		return;
+	}
+	defer font_gl.destroy_gl(font);
 
 	// 
 	program, shader_success := gl.load_shaders("shaders/shader_main.vs", "shaders/shader_main.fs");
@@ -36,27 +59,36 @@ main :: proc() {
 	defer for name, uniform in uniforms do free(uniform.name);
 
 	//
-	docks := &gui.docks;
-	root := gui.append_return(docks);
-	root.size, root.name, root.status = gui.Vec2{f32(resx), f32(resy)}, "Root", gui.Dock_Status.DOCKED;
+	{
+		using gui;
+		using root := append_return(&docks);
+		size, name, status, slot  = Vec2{f32(window_size[0]), f32(window_size[1])}, "Root", DOCKED, ROOT;
 
-	gui.split_dock(docks, "Root",  "Menu",     "Temp",        gui.Dock_Split.HORIZONTAL, 0.10);
-	gui.split_dock(docks, "Temp",  "Toolbar",  "Temp2",       gui.Dock_Split.HORIZONTAL, 0.05);
-	gui.split_dock(docks, "Temp2", "Temp3",    "Statusbar",   gui.Dock_Split.HORIZONTAL, 0.95);
-	gui.split_dock(docks, "Temp3", "Temp4",    "Right",       gui.Dock_Split.VERTICAL,   0.5);
-	gui.split_dock(docks, "Temp4", "Left_Top", "Left_Bottom", gui.Dock_Split.HORIZONTAL, 0.7);
-
-	//gui.make_menu(docks, "Menu");
-	//gui.make_toolbar(docks, "Toolbar");
-	//gui.make_statusbar(docks, "Statusbar");
-
-
+		split_dock(&docks, "Root", "Temp", "Foo", VERTICAL, 0.50);
+		split_dock(&docks, "Temp", "Bar",  "Baz", HORIZONTAL,   0.6);
+	}
 
 	state_right, state_menu, state_toolbar, state_left_top, state_left_bottom, state_statusbar: bool;
 
+	checkbox_state: bool;
+
+
+    rng: pcg32_random_t;
+
+	font_gl.colors[0] = font_gl.Vec4{0, 0, 0, 1}; // black
+	font_gl.colors[1] = font_gl.Vec4{1, 1, 1, 1}; // white
+	font_gl.colors[2] = font_gl.Vec4{1, 0, 0, 1}; // blue/function names
+	font_gl.colors[3] = font_gl.Vec4{0, 1, 0, 1}; // purple/numbers
+	font_gl.colors[4] = font_gl.Vec4{0, 0, 1, 1}; // yellow/strings
+	font_gl.update_colors(0, 5);
+
 	// 
-	gl.ClearColor(0.0, 0.0, 0.0, 1.0);
+	gl.ClearColor(1.0, 1.0, 1.0, 1.0);
 	for !glfw.WindowShouldClose(window) {
+		// 
+		for _, i in temp_log do free(temp_log[i]);
+		clear(&temp_log);
+
 		//
 		glfw.PollEvents();
 		if glfw.GetKey(window, glfw.KEY_ESCAPE) do glfw.SetWindowShouldClose(window, true);
@@ -64,113 +96,203 @@ main :: proc() {
 		//
 		gui.newframe();
 
-		/*
-		if gui.begin_dock("Right") {
-			gui.button("Right 1", &state_right);
+		if gui.begin_dock("Test") {
+			gui.widget_text("blah");
+			gui.widget_checkbox(&checkbox_state);
+			gui.widget_text("bleh");
 			gui.end_dock();
 		}
 
-		if gui.begin_dock("Menu") {
-			gui.button("1 Menu", &state_menu);
+		if gui.begin_dock("Test2") {
+			gui.widget_text("blah");
+			gui.widget_checkbox(&checkbox_state);
+			gui.widget_text("bleh");
 			gui.end_dock();
 		}
 
-		if gui.begin_dock("Toolbar") {
-			gui.button("Menu Button", &state_toolbar);
+		if gui.begin_dock("Foo") {
+			gui.widget_button("bleh");
+			gui.widget_text("bleh");
+			gui.widget_text("bleh");
+			gui.widget_text("bleh");
 			gui.end_dock();
 		}
 
-		if gui.begin_dock("Left_Top") {
-			gui.button("Left_Top first", &state_left_top);
+		if gui.begin_dock("Bar") {
+			gui.widget_text("bleh");
+			gui.widget_button("blarh");
 			gui.end_dock();
 		}
 
-		if gui.begin_dock("Left_Bottom") {
-			gui.button("Left_Botton 1", &state_left_bottom);
-			gui.end_dock();
-		}
-
-		if gui.begin_dock("Statusbar") {
-			gui.button("Statusbar 1", &state_statusbar);
+		if gui.begin_dock("Baz") {
+			gui.widget_button("blarh");
 			gui.end_dock();
 		}
 
 		gui.endframe();
 
-		*/
-
-		//
-		glfw.SetWindowTitle(window, "docks = %d, hot = %p, active = %p, mouse0 = %v", len(docks), cast(rawptr)gui.hot_ptr, cast(rawptr)gui.active_ptr, gui.input.buttons[0]);
-
 		//
 		gl.Clear(gl.COLOR_BUFFER_BIT);
+		gl.Viewport(0, 0, cast(i32)gui.window_size[0], cast(i32)gui.window_size[1]);
 
 		//
 		gl.BindVertexArray(vao);
 		gl.UseProgram(program);
-		gl.Uniform2f(uniforms["resolution"].location, f32(resx), f32(resy));
+		gl.Uniform2f(uniforms["resolution"].location, f32(gui.window_size[0]), f32(gui.window_size[1]));
 
-		//
-		for _, i in gui.drawlists {
-			// one "draw list" per dock, in addition to a final one for separators
-			using list := gui.drawlists[i];
+		// print debug info to log
+		append_to_log(&temp_log, "window size = %v", gui.window_size);
+		append_to_log(&temp_log, "");
 
-			for _, j in items {
-				// each "draw list" has a clipping rect and a list of "items" to be drawn
-				using item := &items[j];
-				using gui.Draw_Item_Kind;
+		append_to_log(&temp_log, "hot dock = %s, active dock = %s", gui.hot_dock != nil ? gui.hot_dock.name : "nil", gui.active_dock != nil ? gui.active_dock.name : "nil");
+		append_to_log(&temp_log, "show menu = %v", gui.show_menu);
+		append_to_log(&temp_log, "show toolbar = %v", gui.show_toolbar);
+		append_to_log(&temp_log, "show statusbar = %v", gui.show_statusbar);
+		append_to_log(&temp_log, "");
 
-				// color
-				col: gui.Vec4;
-				switch kind {
-				case Dock:
-					col = gui.Vec4{39/255.0, 40/255.0, 34/255.0, 1.0};
-				case Dock_Hot:
-					col = gui.Vec4{65/255.0, 66/255.0, 61/255.0, 1.0};
-				case Dock_Active:
-					col = gui.Vec4{85/255.0, 86/255.0, 81/255.0, 1.0};
-				case Button:
-					col = gui.Vec4{0.35, 0.35, 0.8, 1.0};
-				case Button_Hot:
-					col = gui.Vec4{0.55, 0.55, 0.9, 1.0};
-				case Button_Active:
-					col = gui.Vec4{0.95, 0.55, 0.55, 1.0};
-				case Separator:
-					col = gui.Vec4{0.1, 0.1, 0.1, 1.0};
-				case Separator_Hot:
-					col = gui.Vec4{0.4, 0.1, 0.1, 1.0};
-				case Separator_Active:
-					col = gui.Vec4{0.7, 0.1, 0.1, 1.0};
-				case Invalid:
-					fallthrough;
-				case:
-					col = gui.Vec4{1.0, 0.5, 1.0, 1.0};
-				}
-				gl.Uniform4f(uniforms["in_color"].location, col.x, col.y, col.z, col.w);
+		for _, i in gui.docks {
+			using dock := gui.docks[i];
+			append_to_log(&temp_log, "dock[%d] = Dock{", i);
+			append_to_log(&temp_log, "    name = \"%s\", size = %v, anchor = %v", name, size, anchor);
+			append_to_log(&temp_log, "    active = %v, opened = %v, slot = %v, status = %v", active, opened, slot, status);
+			append_to_log(&temp_log, "    parent = %v, child1 = %v, child2 = %v, prev_tab = %v, next_tab = %v", parent, child1, child2, prev_tab, next_tab);
+			append_to_log(&temp_log, "    num widgets = %d", len(widgets));
+			append_to_log(&temp_log, "}");
+			if i != len(gui.docks) - 1 do append_to_log(&temp_log, "");
+		}
+
+		// draw each dock
+		dynamic_docks: [dynamic]^gui.Dock;
+		defer free(dynamic_docks);
+
+		pcg32_srandom_r(&rng, 42, 42);
+		for _, i in gui.docks {
+			using dock := gui.docks[i];
+
+			// save floating docks for sorting
+			if dock.slot == gui.FLOAT {
+				append(&dynamic_docks, dock);
+				continue;
+			}
+
+			col := gui.Vec4{cast(f32)rngf(&rng), cast(f32)rngf(&rng), cast(f32)rngf(&rng), 1.0};
+			//col = gui.C64_colors[(i%14)+2];
+			if dock == gui.hot_dock do col.x, col.y, col.z = 0 - col.x, 1.0 - col.y, 1.0 - col.z;
+
+			gl.Uniform4f(uniforms["in_color"].location, col.x, col.y, col.z, col.w);
 				
-				// draw
-				switch t in data {
-				case gui.Rect:
-					using rect := data.(gui.Rect);
-					gl.Uniform2f(uniforms["anchor"].location, xy.x, xy.y);
-					gl.Uniform2f(uniforms["size"].location, wh.x, wh.y);
+			// draw
+			gl.Uniform2f(uniforms["anchor"].location, anchor.x, anchor.y);
+			gl.Uniform2f(uniforms["size"].location, size.x, size.y);
 
-					gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+		}
+
+		// sort by clicked time
+		for i := 0; i < len(dynamic_docks)-1; i += 1 {
+			max_time := dynamic_docks[i].time_clicked;
+			max_at := i;
+			for j := i+1; j < len(dynamic_docks); j += 1 {
+				if dynamic_docks[j].time_clicked < max_time {
+					max_time = dynamic_docks[j].time_clicked;
+					max_at = j;
 				}
 			}
+
+			if max_at != i {
+				dynamic_docks[i], dynamic_docks[max_at] = dynamic_docks[max_at], dynamic_docks[i]; 
+			}
 		}
-		
+
+		// draw floating docks
+		for _, i in dynamic_docks {
+			using dock := dynamic_docks[i];
+
+			col := gui.Vec4{cast(f32)rngf(&rng), cast(f32)rngf(&rng), cast(f32)rngf(&rng), 1.0};
+			//col = gui.C64_colors[(i%14)+2];
+			if dock == gui.hot_dock do col.x, col.y, col.z = 0 - col.x, 1.0 - col.y, 1.0 - col.z;
+				
+			// draw
+			gl.Uniform4f(uniforms["in_color"].location, col.x, col.y, col.z, col.w);
+			gl.Uniform2f(uniforms["anchor"].location, anchor.x, anchor.y);
+			gl.Uniform2f(uniforms["size"].location, size.x, size.y);
+
+			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+		}
+
+
+		draw_quad :: proc(uniforms: ^map[string]gl.Uniform_Info, anchor, size: gui.Vec2, color: gui.Vec4) {
+			gl.Uniform4fv(uniforms["in_color"].location, 1, &color[0]);
+			gl.Uniform2fv(uniforms["anchor"].location, 1, &anchor.x);
+			gl.Uniform2fv(uniforms["size"].location, 1, &size.x);
+			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+		}
+
+		Vec2 :: #type_alias gui.Vec2;
+		Vec4 :: #type_alias gui.Vec4;
+
+		color_passive := gui.Vec4{1.0, 0.0, 0.0, 1.0};
+		color_active := gui.Vec4{1.0, 0.5, 0.5, 1.0};
+
+		if gui.active_dock != nil {
+			// handle and draw hover overlay for the current hovered dock by the active floating dock
+			for _, i in gui.docks {	
+				using dock := gui.docks[i];
+
+				if !active || !opened || status != gui.DOCKED do continue;
+
+				if !gui.inside_rect(gui.Rect{anchor, size}, gui.input.mouse_position) do continue;
+
+				which := gui.handle_hover(anchor, size, gui.input.mouse_position);
+
+				w := f32(50.0);
+				mid := anchor + size/2.0;
+				draw_quad(&uniforms, mid + w*Vec2{-0.50, -0.50}, w*Vec2{1.0, 1.0}, which == 0 ? color_active : color_passive);
+				draw_quad(&uniforms, mid + w*Vec2{-1.25, -0.50}, w*Vec2{0.5, 1.0}, which == 1 ? color_active : color_passive);
+				draw_quad(&uniforms, mid + w*Vec2{+0.75, -0.50}, w*Vec2{0.5, 1.0}, which == 2 ? color_active : color_passive);
+				draw_quad(&uniforms, mid + w*Vec2{-0.50, +0.75}, w*Vec2{1.0, 0.5}, which == 3 ? color_active : color_passive);
+				draw_quad(&uniforms, mid + w*Vec2{-0.50, -1.25}, w*Vec2{1.0, 0.5}, which == 4 ? color_active : color_passive);
+
+				break;
+			}
+
+			// handle and draw hover overlay for the root dock
+			using dock := gui.docks[0];
+
+			which := gui.handle_hover_root(anchor, size, gui.input.mouse_position);
+
+			w := f32(70.0);
+			draw_quad(&uniforms, anchor + size*Vec2{0.0, 0.5} + w*Vec2{+0.5, -0.5}, w*Vec2{0.5, 1.0}, which == 1 ? color_active : color_passive);
+			draw_quad(&uniforms, anchor + size*Vec2{1.0, 0.5} + w*Vec2{-1.0, -0.5}, w*Vec2{0.5, 1.0}, which == 2 ? color_active : color_passive);
+			draw_quad(&uniforms, anchor + size*Vec2{0.5, 1.0} + w*Vec2{-0.5, -1.0}, w*Vec2{1.0, 0.5}, which == 3 ? color_active : color_passive);
+			draw_quad(&uniforms, anchor + size*Vec2{0.5, 0.0} + w*Vec2{-0.5, +0.5}, w*Vec2{1.0, 0.5}, which == 4 ? color_active : color_passive);
+		}
+
+		//
+		font_gl.set_state();
+		at := [2]f32{0.0, 1.0};
+		for s in temp_log {
+			num, dx, dy := font_gl.draw_string(&font, 12, at, 0, s);
+			at.y += (s == "" ? 10.0 : dy);
+		}
+
 		glfw.SwapBuffers(window);
 	}
 }
 
 
 // callbacks
+windowsize_callback :: proc"c"(window: glfw.Window_Handle, width, height: i32) {
+	fmt.println(width, height);
+	gui.window_size = [2]int{int(width), int(height)};
+}
+
 char_callback :: proc"c"(window: glfw.Window_Handle, c: u32) {
 	append(&gui.input.input_runes, rune(c));
 }
 
 key_callback :: proc"c"(window: glfw.Window_Handle, key, scancode, action, mods: i32) {
+	if key < 0 || key >= 512 do return;
 	if action == glfw.REPEAT do return;
 	using gui;
 	using input;
@@ -186,15 +308,16 @@ key_callback :: proc"c"(window: glfw.Window_Handle, key, scancode, action, mods:
 	last_time := keys_clicked_time[key];
 	if ((keys[key] & 3) == 3 && current_time - last_time < double_click_time) {
 		keys[key] |= Input_State(4);
+		keys_clicked_time[key] = -100000.0;
 	} else {
 		keys[key] &= ~Input_State(4);
 	}
 
-	if ((keys[key]&PRESS) == PRESS) {
+	if (keys[key] == PRESS) {
 		keys_clicked_time[key] = current_time;
 	}
-
 	fmt.printf("key = %d = %v\n", key, keys[key]);
+
 }
 
 button_callback :: proc"c"(window: glfw.Window_Handle, button_, action, mods: i32) {
@@ -216,7 +339,7 @@ button_callback :: proc"c"(window: glfw.Window_Handle, button_, action, mods: i3
 		buttons[button_] &= ~Input_State(4);
 	}
 
-	if ((buttons[button_]) == PRESS) {
+	if (buttons[button_] == PRESS) {
 		buttons_clicked_time[button_] = current_time;
 
 		mouse_position_click[button_] = mouse_position;
@@ -228,7 +351,6 @@ button_callback :: proc"c"(window: glfw.Window_Handle, button_, action, mods: i3
 mouse_callback :: proc"c"(window: glfw.Window_Handle, xpos, ypos: f64) {
 	using gui;
 	using gui.input;
-
 	mouse_position_prev = mouse_position;
 	mouse_position = Vec2{f32(xpos), f32(ypos)};
 	mouse_position_delta = mouse_position - mouse_position_prev;
