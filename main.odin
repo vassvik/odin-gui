@@ -11,6 +11,13 @@ using import "shared:random.odin"
 import gui "gui.odin";
 
 
+Vec2 :: #type_alias gui.Vec2;
+Vec4 :: #type_alias gui.Vec4;
+
+color_passive := gui.Vec4{1.0, 0.0, 0.0, 1.0};
+color_active := gui.Vec4{1.0, 0.5, 0.5, 1.0};
+
+
 append_to_log :: proc(log: ^[dynamic]string, fmt_string: string, vals: ...any) {
 	a := fmt.aprintf(fmt_string, ...vals);
 	append(log, a);
@@ -19,8 +26,12 @@ temp_log: [dynamic]string;
 
 main :: proc() {
 	//
-	gui.window_size = [2]int{1600, 900};
-	window := glfw.init_helper(gui.window_size[0], gui.window_size[1], "odin-gui", 3, 3, 0, true);
+	gui.window_size = [2]int{1700, 900};
+	window := glfw.init_helper(gui.window_size[0], gui.window_size[1], "odin-gui", 4, 5, 0, true);
+	defer glfw.Terminate();
+
+	a := 3.14;
+	fmt.println("3.14 as int:", (cast(^int)&a)^);
 
 	//
 	glfw.SetWindowSizeCallback(window, windowsize_callback);
@@ -31,10 +42,9 @@ main :: proc() {
 	glfw.SetScrollCallback(window, mousewheel_callback);
 
 	// 
-	gl.load_up_to(4, 5, proc(p: rawptr, name: string) do (cast(^rawptr)p)^ = rawptr(glfw.GetProcAddress(&name[0])); );
+	gl.load_up_to(4, 5, proc(p: rawptr, name: string) do (cast(^rawptr)p)^ = glfw.GetProcAddress(&name[0]); );
 
 	//
-	//if !font.init("extra/font_3x1.bin", "shaders/shader_font.vs", "shaders/shader_font.fs") do return;  
 	sizes := [...]int{72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12};
 	codepoints: [95]rune;
 	for i in 0..95 do codepoints[i] = rune(32+i);
@@ -49,29 +59,26 @@ main :: proc() {
 	program, shader_success := gl.load_shaders("shaders/shader_main.vs", "shaders/shader_main.fs");
 	defer gl.DeleteProgram(program);
 
+	//
+	uniforms := gl.get_uniforms_from_program(program);
+	defer for name, uniform in uniforms do free(uniform.name);
+
 	// 
 	vao: u32;
 	gl.GenVertexArrays(1, &vao);
 	defer gl.DeleteVertexArrays(1, &vao);
 
 	//
-	uniforms := gl.get_uniforms_from_program(program);
-	defer for name, uniform in uniforms do free(uniform.name);
-
-	//
 	{
 		using gui;
 		using root := append_return(&docks);
-		size, name, status, slot  = Vec2{f32(window_size[0]), f32(window_size[1])}, "Root", DOCKED, ROOT;
+		size, name, slot  = Vec2{f32(window_size[0]), f32(window_size[1])}, "Root", ROOT;
 
-		split_dock(&docks, "Root", "Temp", "Foo", VERTICAL, 0.50);
-		split_dock(&docks, "Temp", "Bar",  "Baz", HORIZONTAL,   0.6);
+		//split_dock(&docks, "Root", "Temp", "Foo", VERTICAL, 0.50);
+		//split_dock(&docks, "Temp", "Bar",  "Baz", HORIZONTAL,   0.6);
 	}
 
-	state_right, state_menu, state_toolbar, state_left_top, state_left_bottom, state_statusbar: bool;
-
-	checkbox_state: bool;
-
+	checkbox_state1, checkbox_state2: bool;
 
     rng: pcg32_random_t;
 
@@ -93,39 +100,55 @@ main :: proc() {
 		glfw.PollEvents();
 		if glfw.GetKey(window, glfw.KEY_ESCAPE) do glfw.SetWindowShouldClose(window, true);
 
+		if gui.input.keys[glfw.KEY_SPACE] == gui.Input_State.PRESS do gui.reset();
+
 		//
 		gui.newframe();
 
 		if gui.begin_dock("Test") {
-			gui.widget_text("blah");
-			gui.widget_checkbox(&checkbox_state);
-			gui.widget_text("bleh");
+			gui.text("blah");
+			gui.checkbox(&checkbox_state1);
+			gui.text("bleh");
 			gui.end_dock();
 		}
 
 		if gui.begin_dock("Test2") {
-			gui.widget_text("blah");
-			gui.widget_checkbox(&checkbox_state);
-			gui.widget_text("bleh");
+			gui.text("blah");
+			gui.checkbox(&checkbox_state2);
+			gui.text("bleh");
 			gui.end_dock();
 		}
 
-		if gui.begin_dock("Foo") {
-			gui.widget_button("bleh");
-			gui.widget_text("bleh");
-			gui.widget_text("bleh");
-			gui.widget_text("bleh");
+		if gui.begin_dock("Test3") {
+			gui.text("blah");
+			gui.checkbox(&checkbox_state2);
+			gui.text("bleh");
+			gui.end_dock();
+		}
+
+		if gui.begin_dock("Test4") {
+			gui.text("blah");
+			gui.checkbox(&checkbox_state2);
+			gui.text("bleh");
+			gui.end_dock();
+		}
+
+		if gui.begin_dock("Foo") { 
+			gui.button("bleh");
+			gui.text("bleh");
+			gui.text("bleh");
+			gui.text("bleh");
 			gui.end_dock();
 		}
 
 		if gui.begin_dock("Bar") {
-			gui.widget_text("bleh");
-			gui.widget_button("blarh");
+			gui.text("bleh");
+			gui.button("blarh");
 			gui.end_dock();
 		}
 
 		if gui.begin_dock("Baz") {
-			gui.widget_button("blarh");
+			gui.button("blarh");
 			gui.end_dock();
 		}
 
@@ -145,20 +168,15 @@ main :: proc() {
 		append_to_log(&temp_log, "");
 
 		append_to_log(&temp_log, "hot dock = %s, active dock = %s", gui.hot_dock != nil ? gui.hot_dock.name : "nil", gui.active_dock != nil ? gui.active_dock.name : "nil");
-		append_to_log(&temp_log, "show menu = %v", gui.show_menu);
-		append_to_log(&temp_log, "show toolbar = %v", gui.show_toolbar);
-		append_to_log(&temp_log, "show statusbar = %v", gui.show_statusbar);
+		//append_to_log(&temp_log, "show menu = %v", gui.show_menu);
+		//append_to_log(&temp_log, "show toolbar = %v", gui.show_toolbar);
+		//append_to_log(&temp_log, "show statusbar = %v", gui.show_statusbar);
+		//append_to_log(&temp_log, "%d docks", len(gui.docks));
 		append_to_log(&temp_log, "");
 
 		for _, i in gui.docks {
 			using dock := gui.docks[i];
-			append_to_log(&temp_log, "dock[%d] = Dock{", i);
-			append_to_log(&temp_log, "    name = \"%s\", size = %v, anchor = %v", name, size, anchor);
-			append_to_log(&temp_log, "    active = %v, opened = %v, slot = %v, status = %v", active, opened, slot, status);
-			append_to_log(&temp_log, "    parent = %v, child1 = %v, child2 = %v, prev_tab = %v, next_tab = %v", parent, child1, child2, prev_tab, next_tab);
-			append_to_log(&temp_log, "    num widgets = %d", len(widgets));
-			append_to_log(&temp_log, "}");
-			if i != len(gui.docks) - 1 do append_to_log(&temp_log, "");
+			append_to_log(&temp_log, "dock[%d] = Dock { name = \"%s\", size = %v, anchor = %v, active = %v, opened = %v, slot = %v, parent = '%s', child1 = '%s', child2 = '%s', prev_tab = '%s', next_tab = '%s', num widgets = %d }", i, name, size, anchor, active, opened, slot, parent == nil ? "nil" : parent.name, child1 == nil ? "nil" : child1.name, child2 == nil ? "nil" : child2.name, prev_tab == nil ? "nil" : prev_tab.name, next_tab == nil ? "nil" : next_tab.name, len(widgets));
 		}
 
 		// draw each dock
@@ -175,17 +193,27 @@ main :: proc() {
 				continue;
 			}
 
+			if child1 != nil || child2 != nil do continue;
+			if name == "Root" do continue;
+			if !active do continue;
+
 			col := gui.Vec4{cast(f32)rngf(&rng), cast(f32)rngf(&rng), cast(f32)rngf(&rng), 1.0};
 			//col = gui.C64_colors[(i%14)+2];
 			if dock == gui.hot_dock do col.x, col.y, col.z = 0 - col.x, 1.0 - col.y, 1.0 - col.z;
+			draw_quad(&uniforms, anchor, size, col);
 
-			gl.Uniform4f(uniforms["in_color"].location, col.x, col.y, col.z, col.w);
-				
-			// draw
-			gl.Uniform2f(uniforms["anchor"].location, anchor.x, anchor.y);
-			gl.Uniform2f(uniforms["size"].location, size.x, size.y);
-
-			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+			// draw tabs
+			start_tab := dock;
+			for start_tab.prev_tab != nil do start_tab = start_tab.prev_tab;
+			
+			at_x := f32(5.0);
+			for start_tab != nil {
+				col := !gui.inside_rect(gui.Rect{anchor + Vec2{at_x, 5.0}, Vec2{50.0, 25.0}}, gui.input.mouse_position) ? Vec4{1.0, 0.7, 0.4, 1.0} : Vec4{0.4, 0.7, 1.0, 1.0};
+				if start_tab.active do col = Vec4{0.4, 1.0, 0.7, 1.0};
+				draw_quad(&uniforms, anchor + Vec2{at_x, 5.0}, Vec2{50.0, 25.0}, col);
+				at_x += 55.0;
+				start_tab = start_tab.next_tab;
+			}
 		}
 
 		// sort by clicked time
@@ -212,35 +240,28 @@ main :: proc() {
 			//col = gui.C64_colors[(i%14)+2];
 			if dock == gui.hot_dock do col.x, col.y, col.z = 0 - col.x, 1.0 - col.y, 1.0 - col.z;
 				
-			// draw
-			gl.Uniform4f(uniforms["in_color"].location, col.x, col.y, col.z, col.w);
-			gl.Uniform2f(uniforms["anchor"].location, anchor.x, anchor.y);
-			gl.Uniform2f(uniforms["size"].location, size.x, size.y);
+			draw_quad(&uniforms, anchor, size, col);
 
-			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+			// draw tabs
+			start_tab := dock;
+			for start_tab.prev_tab != nil do start_tab = start_tab.prev_tab;
+			
+			at_x := f32(5.0);
+			for start_tab != nil {
+				col := !gui.inside_rect(gui.Rect{anchor + Vec2{at_x, 5.0}, Vec2{50.0, 25.0}}, gui.input.mouse_position) ? Vec4{1.0, 0.7, 0.4, 1.0} : Vec4{0.4, 0.7, 1.0, 1.0};
+				draw_quad(&uniforms, anchor + Vec2{at_x, 5.0}, Vec2{50.0, 25.0}, col);
+				at_x += 55.0;
+				start_tab = start_tab.next_tab;
+			}
 		}
 
 
-		draw_quad :: proc(uniforms: ^map[string]gl.Uniform_Info, anchor, size: gui.Vec2, color: gui.Vec4) {
-			gl.Uniform4fv(uniforms["in_color"].location, 1, &color[0]);
-			gl.Uniform2fv(uniforms["anchor"].location, 1, &anchor.x);
-			gl.Uniform2fv(uniforms["size"].location, 1, &size.x);
-			gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
-		}
-
-		Vec2 :: #type_alias gui.Vec2;
-		Vec4 :: #type_alias gui.Vec4;
-
-		color_passive := gui.Vec4{1.0, 0.0, 0.0, 1.0};
-		color_active := gui.Vec4{1.0, 0.5, 0.5, 1.0};
-
-		if gui.active_dock != nil {
+		if gui.active_dock != nil && gui.active_dock.slot == gui.FLOAT {
 			// handle and draw hover overlay for the current hovered dock by the active floating dock
 			for _, i in gui.docks {	
 				using dock := gui.docks[i];
 
-				if !active || !opened || status != gui.DOCKED do continue;
-
+				if !active || !opened || slot == gui.FLOAT do continue;
 				if !gui.inside_rect(gui.Rect{anchor, size}, gui.input.mouse_position) do continue;
 
 				which := gui.handle_hover(anchor, size, gui.input.mouse_position);
@@ -276,10 +297,18 @@ main :: proc() {
 			at.y += (s == "" ? 10.0 : dy);
 		}
 
+		//
 		glfw.SwapBuffers(window);
 	}
 }
 
+
+draw_quad :: proc(uniforms: ^map[string]gl.Uniform_Info, anchor, size: gui.Vec2, color: gui.Vec4) {
+	gl.Uniform4fv(uniforms["in_color"].location, 1, &color[0]);
+	gl.Uniform2fv(uniforms["anchor"].location, 1, &anchor.x);
+	gl.Uniform2fv(uniforms["size"].location, 1, &size.x);
+	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+}
 
 // callbacks
 windowsize_callback :: proc"c"(window: glfw.Window_Handle, width, height: i32) {
@@ -316,8 +345,10 @@ key_callback :: proc"c"(window: glfw.Window_Handle, key, scancode, action, mods:
 	if (keys[key] == PRESS) {
 		keys_clicked_time[key] = current_time;
 	}
-	fmt.printf("key = %d = %v\n", key, keys[key]);
 
+	if key >= glfw.KEY_LEFT_SHIFT && key <= glfw.KEY_RIGHT_SUPER do modifiers[key - glfw.KEY_LEFT_SHIFT] = bool(new_state);
+
+	fmt.printf("key = %d = %v\n", key, keys[key]);
 }
 
 button_callback :: proc"c"(window: glfw.Window_Handle, button_, action, mods: i32) {

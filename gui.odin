@@ -4,25 +4,6 @@ import "core:fmt.odin"
 Vec2 :: [2]f32;
 Vec4 :: [4]f32;
 
-C64_colors := [16]Vec4{
-	Vec4{  0.0/255.0,   0.0/255.0,   0.0/255.0, 1.0},
-	Vec4{255.0/255.0, 255.0/255.0, 255.0/255.0, 1.0},
-	Vec4{136.0/255.0,   0.0/255.0,   0.0/255.0, 1.0},
-	Vec4{170.0/255.0, 255.0/255.0, 238.0/255.0, 1.0},
-	Vec4{204.0/255.0,  68.0/255.0, 204.0/255.0, 1.0},
-	Vec4{  0.0/255.0, 204.0/255.0,  85.0/255.0, 1.0},
-	Vec4{  0.0/255.0,   0.0/255.0, 170.0/255.0, 1.0},
-	Vec4{238.0/255.0, 238.0/255.0, 119.0/255.0, 1.0},
-	Vec4{221.0/255.0, 136.0/255.0,  85.0/255.0, 1.0},
-	Vec4{102.0/255.0,  68.0/255.0,   0.0/255.0, 1.0},
-	Vec4{255.0/255.0, 119.0/255.0, 119.0/255.0, 1.0},
-	Vec4{ 51.0/255.0,  51.0/255.0,  51.0/255.0, 1.0},
-	Vec4{119.0/255.0, 119.0/255.0, 119.0/255.0, 1.0},
-	Vec4{170.0/255.0, 255.0/255.0, 102.0/255.0, 1.0},
-	Vec4{  0.0/255.0, 136.0/255.0, 255.0/255.0, 1.0},
-	Vec4{187.0/255.0, 187.0/255.0, 187.0/255.0, 1.0},
-};
-
 Rect :: struct {
 	xy: Vec2,
 	wh: Vec2,
@@ -82,7 +63,6 @@ append_return :: proc(arr: ^[dynamic]^$T) -> ^T {
 
 // docks
 Dock_Slot :: enum #export {
-	
 	MENU,
 	TASKBAR,
 	STATUSBAR,
@@ -99,12 +79,9 @@ Dock_Slot :: enum #export {
 	TAB,
 
 	FLOAT,
-};
 
-Dock_Status :: enum #export {
-	DOCKED,
-	FLOATING,
-	DRAGGED,
+	DUMMY,
+	SINGLE,
 };
 
 Dock_Split :: enum #export {
@@ -122,118 +99,65 @@ Dock :: struct {
 	opened := true,
 
 	slot := Dock_Slot.FLOAT,
-	status := Dock_Status.FLOATING,
 
 	prev_tab, next_tab: ^Dock,
 	child1, child2: ^Dock,
 	parent: ^Dock,
 
 	time_clicked := -1.0,
+	clicked_at := Vec2{},
 
 	widgets: [dynamic]Widget,
 };
 
-Widget_Kind :: enum {
-	CHECKBOX,
-	TEXT,
-	TEXT_INPUT,
-	RADIO,
-	SLIDER,
-	DRAG,
-	BUTTON,
-	
-	FRAMEBUFFER,
 
-	COMBO,
-
-	MENU_ENTRY,
-	MENU_ITEM,
-
-	Tooltip,
-}
-
-Widget_Button :: struct {
+Button :: struct {
 	text: string,
 	rect: Rect,
 	state: bool,
 }
 
-Widget_Text :: struct {
+Text :: struct {
 	text: string,
 	rect: Rect,
 }
 
-Widget_Checkbox :: struct {
+Checkbox :: struct {
 	rect: Rect,
 	state: bool
 }
 
-Widget_Data :: union {
-	Widget_Button,
-	Widget_Text,
-	Widget_Checkbox,
-}
-
-Widget :: struct {
-	kind: Widget_Kind,
-	data: Widget_Data,
+Widget :: union {
+	Button,
+	Text,
+	Checkbox,
 }
 
 
-widget_text :: proc(fmt: string, args: ...any) {
+
+text :: proc(fmt: string, args: ...any) {
 	assert(current_dock != nil, "No dock opened.");
 	using current_dock;
 	
-	append(&widgets, Widget{Widget_Kind.TEXT, Widget_Text{}});
+	append(&widgets, Text{});
 }
 
-widget_button :: proc(str: string) -> bool {
+button :: proc(str: string) -> bool {
 	assert(current_dock != nil, "No dock opened.");	
 	using current_dock;
 
-	append(&widgets, Widget{Widget_Kind.BUTTON, Widget_Button{}});
+	append(&widgets, Button{});
 
 	return false;
 }
 
-widget_checkbox :: proc(state: ^bool) {
+checkbox :: proc(state: ^bool) {
 	assert(current_dock != nil, "No dock opened.");
 	using current_dock;
 
-	append(&widgets, Widget{Widget_Kind.CHECKBOX, Widget_Checkbox{}});
+	append(&widgets, Checkbox{});
 }
 
-
-Draw_Data :: union {
-	Rect,
-	string,
-	// possibly more
-}
-
-Draw_Item_Kind :: enum {
-	// usage hint: what kind of widget does it come from
-	Invalid,
-	Dock,
-	Dock_Hot,
-	Dock_Active,
-	Button,
-	Button_Hot,
-	Button_Active,
-	Separator,
-	Separator_Hot,
-	Separator_Active,
-}
-
-Draw_Item :: struct {
-	kind: Draw_Item_Kind,
-	data: Draw_Data,
-}
-
-Draw_List :: struct {
-	items: [dynamic]Draw_Item,
-	from_dock: ^Dock,
-	clip_rect: Rect,
-}
 
 // globals
 docks: [dynamic]^Dock;
@@ -243,24 +167,17 @@ show_menu := true;
 show_toolbar := true;
 show_statusbar := true;
 
-
 hot_dock: ^Dock = nil;
 active_dock: ^Dock = nil;
 
 
-drawlists: [dynamic]^Draw_List;
-
-
 current_dock: ^Dock = nil;
-current_list: ^Draw_List = nil;
 current_position: Vec2;
 
 hot_ptr: uintptr;
 active_ptr: uintptr;
 
-
 sep_width := f32(5.0);
-
 
 
 // dock setup stuff
@@ -273,34 +190,154 @@ find_dock_in_docks :: proc(docks: ^[dynamic]^Dock, name: string) -> (^Dock) {
 	return nil;
 }
 
-split_dock :: proc(docks: ^[dynamic]^Dock, name_parent, name_child1, name_child2: string, split_mode: Dock_Split, split_at: f32 = 0.5) {
-	using dock := find_dock_in_docks(docks, name_parent); // return ^Dock
-	if dock == nil do return;
+insert :: proc(docks: ^[dynamic]^Dock, current_dock: ^Dock, insert_dock: ^Dock, insert_slot: Dock_Slot) {
+	insert_dock.active = true;
+	current_dock.active = false;
 
-	c1 := append_return(docks);
-	c2 := append_return(docks);
+	insert_dock.slot = insert_slot;
 
-	switch split_mode {
-	case Dock_Split.HORIZONTAL:
-		c1.size, c1.anchor, c1.slot = size*Vec2{1, split_at},   anchor,                          Dock_Slot.TOP;
-		c2.size, c2.anchor, c2.slot = size*Vec2{1, 1-split_at}, anchor + Vec2{0, split_at}*size, Dock_Slot.BOTTOM;
-	case Dock_Split.VERTICAL:
-		c1.size, c1.anchor, c1.slot = size*Vec2{split_at, 1},    anchor,                          Dock_Slot.LEFT;
-		c2.size, c2.anchor, c2.slot = size*Vec2{1-split_at, 1},  anchor + Vec2{split_at, 0}*size, Dock_Slot.RIGHT;
+	if current_dock.slot == ROOT {
+		assert(insert_slot != TAB);
+
+		if current_dock.child1 == nil {
+			// no children
+			assert(current_dock.child2 == nil);
+			
+			current_dock.child1 = insert_dock;
+
+			insert_dock.parent = current_dock;
+			insert_dock.anchor = current_dock.anchor;
+			insert_dock.size = current_dock.size;
+			insert_dock.slot = SINGLE;
+
+
+		} else if current_dock.child2 == nil {
+			// one child
+			insert_dock.parent = current_dock;
+
+			switch insert_slot {
+			case LEFT:
+				current_dock.child1, current_dock.child2 = insert_dock, current_dock.child1;
+				current_dock.child2.slot = RIGHT;
+			case RIGHT:
+				current_dock.child1, current_dock.child2 = current_dock.child1, insert_dock;
+				current_dock.child1.slot = LEFT;
+			case TOP:
+				current_dock.child1, current_dock.child2 = insert_dock, current_dock.child1;
+				current_dock.child2.slot = BOTTOM;
+			case BOTTOM:
+				current_dock.child1, current_dock.child2 = current_dock.child1, insert_dock;
+				current_dock.child1.slot = TOP;
+			case:
+				assert(false);
+			}
+
+			resize_proportionally(current_dock, insert_slot == LEFT || insert_slot == TOP ? 0.33 : 0.66);
+		} else {
+			// two children
+			new_dock := append_return(docks);
+			new_dock.parent = current_dock;
+			new_dock.active = false;
+			insert_dock.parent = current_dock;
+
+			new_dock.child1, new_dock.child2 = current_dock.child1, current_dock.child2;
+			
+			current_dock.child1.parent, current_dock.child2.parent = new_dock, new_dock;
+
+			switch insert_slot {
+			case LEFT:
+				current_dock.child1, current_dock.child2 = insert_dock, new_dock;
+				current_dock.child2.slot = RIGHT;
+			case RIGHT:
+				current_dock.child1, current_dock.child2 = new_dock, insert_dock;
+				current_dock.child1.slot = LEFT;
+			case TOP:
+				current_dock.child1, current_dock.child2 = insert_dock, new_dock;
+				current_dock.child2.slot = BOTTOM;
+			case BOTTOM:
+				current_dock.child1, current_dock.child2 = new_dock, insert_dock;
+				current_dock.child1.slot = TOP;
+			case:
+				assert(false);
+			}
+
+			resize_proportionally(current_dock, insert_slot == LEFT || insert_slot == TOP ? 0.33 : 0.66);
+		}
+	} else {
+		assert(current_dock.child1 == nil && current_dock.child2 == nil);
+		
+		if insert_slot == TAB {
+			if current_dock.next_tab != nil {
+				insert_dock.next_tab = current_dock.next_tab;
+				current_dock.next_tab.prev_tab = insert_dock;
+			} 
+			current_dock.next_tab = insert_dock;
+			insert_dock.prev_tab = current_dock;
+			
+			insert_dock.active = true;
+			current_dock.active = false;
+			insert_dock.anchor = current_dock.anchor;
+			insert_dock.size = current_dock.size;
+		} else {
+
+			if current_dock.slot == TAB {
+				current_dock.active = true;
+				for current_dock.prev_tab != nil {
+					current_dock = current_dock.prev_tab;
+				}
+			} else {
+				current_dock.active = true;
+			}
+			new_dock := append_return(docks);
+			new_dock.parent = current_dock.parent;
+			new_dock.slot = current_dock.slot;
+			new_dock.anchor = current_dock.anchor;
+			new_dock.size = current_dock.size;
+			new_dock.active = false;
+
+			if current_dock.parent.slot == ROOT && current_dock.parent.child2 == nil && current_dock.parent.child1 != nil {
+				current_dock.parent.child1 = new_dock;
+				if insert_slot == LEFT || insert_slot == TOP {
+					current_dock.slot = insert_slot == LEFT ? RIGHT : BOTTOM;
+				} else {
+					current_dock.slot = insert_slot == RIGHT ? LEFT : TOP;
+				}
+			} else {
+				if current_dock.slot == LEFT || current_dock.slot == TOP {
+					current_dock.parent.child1 = new_dock;
+				} else {
+					current_dock.parent.child2 = new_dock;
+				}
+			}
+
+			current_dock.parent = new_dock;
+			insert_dock.parent = new_dock;
+
+			switch insert_slot {
+			case LEFT:
+				new_dock.child1, new_dock.child2 = insert_dock, current_dock;
+				new_dock.child2.slot = RIGHT;
+			case RIGHT:
+				new_dock.child1, new_dock.child2 = current_dock, insert_dock;
+				new_dock.child1.slot = LEFT;
+			case TOP:
+				new_dock.child1, new_dock.child2 = insert_dock, current_dock;
+				new_dock.child2.slot = BOTTOM;
+			case BOTTOM:
+				new_dock.child1, new_dock.child2 = current_dock, insert_dock;
+				new_dock.child1.slot = TOP;
+			case:
+				assert(false);
+			}
+
+			resize_proportionally(new_dock, insert_slot == LEFT || insert_slot == TOP ? 0.5 : 0.5);
+		}
 	}
-	
-	c1.status, c1.name, c1.parent = Dock_Status.DOCKED, name_child1, dock;
-	c2.status, c2.name, c2.parent = Dock_Status.DOCKED, name_child2, dock;
-	child1, child2 = c1, c2;
-	
-	active = false;
 }
 
 resize_proportionally :: proc(using dock: ^Dock, split_at: f32) {
-	
 	if child1 == nil || child2 == nil do return;
 	
-
 	child1_split_at, child2_split_at: f32 = -1.0, -1.0;
 	if child1.child1 != nil && child1.child2 != nil {
 		if child1.child1.slot == Dock_Slot.TOP {
@@ -324,17 +361,14 @@ resize_proportionally :: proc(using dock: ^Dock, split_at: f32) {
 		child1.size, child1.anchor = size*Vec2{split_at, 1},    anchor;
 		child2.size, child2.anchor = size*Vec2{1-split_at, 1},  anchor + Vec2{split_at, 0}*size;
 	}
-	
+
 	if child1_split_at != -1.0 do resize_proportionally(child1, clamp(child1_split_at, 0.01, 0.99));
 	if child2_split_at != -1.0 do resize_proportionally(child2, clamp(child2_split_at, 0.01, 0.99));
 }
 
-add_tab :: proc(docks: ^[dynamic]^Dock, name_parent, name_tab: string) {
-}
 
 // 
 newframe :: proc() {
-	using Draw_Item_Kind;
 
 	// check for hot dock
 	hot_dock = nil;
@@ -343,6 +377,7 @@ newframe :: proc() {
 
 		// skip if it's not an active dock, or if it's not a leaf dock
 		if !(active && child1 == nil && child2 == nil) do continue;
+
 
 		// skip if docks is not hovered by mouse
 		hit := inside_rect(Rect{anchor, size}, input.mouse_position);
@@ -374,8 +409,84 @@ newframe :: proc() {
 
 	}
 
-	if (hot_dock != nil && active_dock == nil && input.buttons[0] & Input_State.PRESS == Input_State.PRESS) {
+	if hot_dock != nil && active_dock == nil && input.buttons[0] & Input_State.PRESS == Input_State.PRESS && input.modifiers[2] {
 		active_dock = hot_dock;
+
+	}
+
+	// pull out floating docks, and sort by click time
+	dynamic_docks: [dynamic]^Dock;
+	defer free(dynamic_docks);
+
+	for _, i in docks {
+		using dock := docks[i];
+
+		if dock.slot == FLOAT {
+			append(&dynamic_docks, dock);
+		}
+	}
+	
+	for i := 0; i < len(dynamic_docks)-1; i += 1 {
+		max_time := dynamic_docks[i].time_clicked;
+		max_at := i;
+		for j := i+1; j < len(dynamic_docks); j += 1 {
+			if dynamic_docks[j].time_clicked < max_time {
+				max_time = dynamic_docks[j].time_clicked;
+				max_at = j;
+			}
+		}
+
+		if max_at != i {
+			dynamic_docks[i], dynamic_docks[max_at] = dynamic_docks[max_at], dynamic_docks[i]; 
+		}
+	}
+
+	// when a floating dock is active and the mouse is release, check to see if it should split or add itself to the tabs of a docked
+	if active_dock != nil && active_dock.slot == FLOAT && input.buttons[0] == Input_State.RELEASE {
+		// handle split hover overlay for the current hovered dock
+		hit_dock: ^Dock;
+		hit_which: int;
+
+		for _, i in docks {	
+			using dock := docks[i];
+
+			if !active || !opened || slot == FLOAT do continue;
+
+			if !inside_rect(Rect{anchor, size}, input.mouse_position) do continue;
+
+			if which := handle_hover(anchor, size, input.mouse_position); which != -1 {
+				hit_which = which;
+				hit_dock = dock;
+			}
+
+			break;
+		}
+
+		// handle split hover for the root dock
+		using dock := docks[0];
+
+		if which := handle_hover_root(anchor, size, input.mouse_position); which != -1 {
+			hit_which = which;
+			hit_dock = dock;
+		}
+
+		// 
+		if hit_dock != nil {
+			switch (hit_which) {
+			case 1:
+				insert(&docks, hit_dock, active_dock, LEFT);
+			case 2:
+				insert(&docks, hit_dock, active_dock, RIGHT);
+			case 3:
+				insert(&docks, hit_dock, active_dock, BOTTOM);
+			case 4:
+				insert(&docks, hit_dock, active_dock, TOP);
+			case 0:
+				insert(&docks, hit_dock, active_dock, TAB);
+			}
+
+			active_dock = nil;
+		}
 	}
 
 	if (input.buttons[0]&1 == 0) {
@@ -385,89 +496,39 @@ newframe :: proc() {
 
 	for _, i in docks {
 		using dock := docks[i];
-		opened = false;
+		
 		clear(&widgets);
-	}
+		opened = false;
 
-	/*
-	hot_ptr = 0;
-	if input.buttons[0] & 1 == 0 do active_ptr = 0;
-
-	for _, i in drawlists do free(drawlists[i].items);
-	clear(&drawlists);
-
-	current_list = append_return(&drawlists);
-	current_list.from_dock = nil;
-	for _, i in docks {
-		using dock := docks[i];
-
-		if child1 != nil && child2 != nil {
-			r: Rect;
-			if child1.slot == Dock_Slot.LEFT {
-				r = Rect{
-					child1.anchor + Vec2{child1.size.x - sep_width/2.0, sep_width/2.0},
-					Vec2{sep_width, child1.size.y - sep_width}
-				};
-			} else {
-				r = Rect{
-					child1.anchor + Vec2{sep_width/2.0, child1.size.y - sep_width/2.0},
-					Vec2{child1.size.x - sep_width, sep_width}
-				};
+		if child1 == nil && child2 == nil && prev_tab == nil && next_tab != nil {
+			current_dock := dock;
+			for current_dock != nil {
+				current_dock.anchor, current_dock.size = anchor, size;
+				current_dock = current_dock.next_tab;
 			}
-
-			// input
-			inside := inside_rect(r, input.mouse_position);
-			if inside {
-				if hot_ptr == 0 do hot_ptr = uintptr(child1);
-
-				if active_ptr == 0 && input.buttons[0] & Input_State.PRESS == Input_State.PRESS {
-					active_ptr = uintptr(child1);
-				}
-			}
-
-			if active_ptr == uintptr(child1) {
-				dx, dy: f32;
-				if child1.slot == Dock_Slot.LEFT {
-					dx = cast(f32)input.mouse_position_delta.x;
-					r.xy.x += dx;
-				} else {
-					dy = cast(f32)input.mouse_position_delta.y;
-					r.xy.y += dy;
-				}
-				split_at := child1.slot == Dock_Slot.LEFT ? (child1.size.x + dx)/size.x : (child1.size.y + dy)/size.y;
-				resize_proportionally(dock, clamp(split_at, 0.01, 0.99));
-			}
-
-			new_state := active_ptr == uintptr(child1) ? Separator_Active : hot_ptr == uintptr(child1) ? Separator_Hot : Separator;
-			append(&current_list.items, Draw_Item{new_state, r});
 		}
 	}
-	*/
 
 	current_dock = nil;
-	current_list = nil;
-
 }
 
 current_iteration := 0;
 
 endframe :: proc() {
-	/*
-	first := drawlists[0];
-	for _, i in drawlists[1..] {
-		drawlists[i] = drawlists[i+1];
-	}
-	drawlists[len(drawlists)-1] = first;
 
-	*/
-
-
+	// move floating dock
 	if active_dock != nil && active_dock.slot == FLOAT && active_ptr == 0 {
+		if (input.buttons[0] == Input_State.PRESS) {
+			active_dock.time_clicked = f64(current_iteration);
+			active_dock.clicked_at = input.mouse_position - active_dock.anchor;
+		}
+
 		if input.buttons[0] & 1 == 1 {
-			active_dock.anchor += input.mouse_position_delta;
+			active_dock.anchor = input.mouse_position - active_dock.clicked_at;
 		}
 	}
 
+	// if clicked on hot dock, change click time
 	if hot_dock != nil {
 		if (input.buttons[0] == Input_State.PRESS) {
 			hot_dock.time_clicked = f64(current_iteration);
@@ -487,12 +548,18 @@ endframe :: proc() {
 	input.mouse_position_delta = Vec2{};
 }
 
-import "core:strings.odin"
+reset :: proc() {
+	for _ in docks[1..] {
+		dock := pop(&docks);
+		free(dock);
+	}
+	docks[0].child1 = nil;
+	docks[0].child2 = nil;
+}
 
 begin_dock :: proc(search_name: string) -> bool {
-	using Draw_Item_Kind;
 
-	assert(current_dock == nil && current_list == nil, "Expected `current_dock == nil` and `current_list == nil`. Did you match a `begin_dock` with a `close_dock`?");
+	assert(current_dock == nil, "Expected `current_dock == nil`. Did you match a `begin_dock` with a `close_dock`?");
 	
 	using dock := find_dock_in_docks(&docks, search_name);
 	if dock == nil {
@@ -505,73 +572,29 @@ begin_dock :: proc(search_name: string) -> bool {
 		return false;
 	}
 
-	if !active do return false;
 	opened = true;
+	if !active do return false;
 
 	assert(child1 == nil || child2 == nil, "Expected leaf dock");
 	
 	current_dock = dock;
-	
-	/*
 
-
-	current_list = append_return(&drawlists);
-	current_list.clip_rect, current_list.from_dock = Rect{dock.anchor, dock.size}, dock;
-
-	current_position = anchor + Vec2{10, 10};
-
-	if inside_rect(Rect{anchor, size}, input.mouse_position, sep_width/2.0) {
-		if hot_ptr == 0 do hot_ptr = uintptr(dock);
-		if active_ptr == 0 && input.buttons[0] & Input_State.PRESS == Input_State.PRESS {
-			active_ptr = uintptr(dock);
-		}
-	}
-
-	new_state := active_ptr == uintptr(dock) ? Dock_Active : hot_ptr == uintptr(dock) ? Dock_Hot : Dock;
-	append(&current_list.items, Draw_Item{new_state, Rect{anchor, size}});
-	*/
 	return true;
 }
 
 end_dock :: proc() {
 	current_dock = nil;
-	current_list = nil;
 }
-
-// widgets
-button :: proc(str: string, state: ^bool) {
-	using Draw_Item_Kind;
-	using input;
-
-	if current_dock == nil || current_list == nil do return;
-	using current_list;
-
-	box_size := Vec2{20*f32(len(str)), 20};
-
-	if inside_rect(Rect{current_position, box_size}, mouse_position) {
-		hot_ptr = uintptr(state);
-		if input.buttons[0] & Input_State.PRESS == Input_State.PRESS {
-			active_ptr = uintptr(state);
-		}
-	}
-
-	new_state := active_ptr == uintptr(state) ? Button_Active : hot_ptr == uintptr(state) ? Button_Hot : Button;
-	append(&items, Draw_Item{new_state, Rect{current_position, box_size}});
-	current_position += Vec2{0, box_size.y + 5};
-
-	state^ = false;
-}
-
 
 
 
 // Input
 
 Input_State :: enum u8 {
-	UP = 0b000,
-	DOWN = 0b001,
-	RELEASE = 0b010,
-	PRESS = 0b011,
+	UP          = 0b000,
+	DOWN        = 0b001,
+	RELEASE     = 0b010,
+	PRESS       = 0b011,
 	DOUBLEPRESS = 0b111,
 }
 
@@ -591,6 +614,8 @@ input: struct {
 	mousewheel:               f32,
 	mousewheel_prev:          f32,
 	mousewheel_delta:         f32,
+
+	modifiers:                [8]bool,
 
 };
 
