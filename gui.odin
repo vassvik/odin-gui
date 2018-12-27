@@ -1,4 +1,7 @@
-import "core:fmt.odin"
+package main
+
+import "core:fmt"
+import "core:math"
 
 // general purpose stuff
 Vec2 :: [2]f32;
@@ -56,13 +59,13 @@ handle_hover_root :: proc(anchor, size, position: Vec2) -> int {
 
 
 append_return :: proc(arr: ^[dynamic]^$T) -> ^T {
-	l := append(arr, new(T));
-	return arr[l-1];
+	append(arr, new(T));
+	return arr[len(arr)-1];
 }
 
 
 // docks
-Dock_Slot :: enum #export {
+using Dock_Slot :: enum {
 	MENU,
 	TASKBAR,
 	STATUSBAR,
@@ -84,28 +87,23 @@ Dock_Slot :: enum #export {
 	SINGLE,
 };
 
-Dock_Split :: enum #export {
-	VERTICAL,
-	HORIZONTAL,
-};
-
 Dock :: struct {
 	size: Vec2,
 	anchor: Vec2,
 
 	name: string,
 
-	active := true,
-	opened := true,
+	active: bool,
+	opened: bool,
 
-	slot := Dock_Slot.FLOAT,
+	slot: Dock_Slot,
 
 	prev_tab, next_tab: ^Dock,
 	child1, child2: ^Dock,
 	parent: ^Dock,
 
-	time_clicked := -1.0,
-	clicked_at := Vec2{},
+	time_clicked: f64,
+	clicked_at: Vec2,
 
 	widgets: [dynamic]Widget,
 };
@@ -135,7 +133,7 @@ Widget :: union {
 
 
 
-text :: proc(fmt: string, args: ...any) {
+text :: proc(fmt: string, args: ..any) {
 	assert(current_dock != nil, "No dock opened.");
 	using current_dock;
 	
@@ -169,7 +167,6 @@ show_statusbar := true;
 
 hot_dock: ^Dock = nil;
 active_dock: ^Dock = nil;
-
 
 current_dock: ^Dock = nil;
 current_position: Vec2;
@@ -236,6 +233,8 @@ insert :: proc(docks: ^[dynamic]^Dock, current_dock: ^Dock, insert_dock: ^Dock, 
 		} else {
 			// two children
 			new_dock := append_return(docks);
+			new_dock.active, new_dock.opened, new_dock.slot, new_dock.time_clicked, new_dock.clicked_at = true, true, Dock_Slot.FLOAT, -1.0, Vec2{};
+
 			new_dock.parent = current_dock;
 			new_dock.active = false;
 			insert_dock.parent = current_dock;
@@ -289,6 +288,8 @@ insert :: proc(docks: ^[dynamic]^Dock, current_dock: ^Dock, insert_dock: ^Dock, 
 				current_dock.active = true;
 			}
 			new_dock := append_return(docks);
+			new_dock.active, new_dock.opened, new_dock.slot, new_dock.time_clicked, new_dock.clicked_at = true, true, Dock_Slot.FLOAT, -1.0, Vec2{};
+
 			new_dock.parent = current_dock.parent;
 			new_dock.slot = current_dock.slot;
 			new_dock.anchor = current_dock.anchor;
@@ -409,14 +410,14 @@ newframe :: proc() {
 
 	}
 
+	append_to_log(&temp_log, "hot_dock %v, active_dock %v, input.buttons[0] %v, input.modifiers[2] %v", hot_dock, active_dock, input.buttons[0], input.modifiers[2]);
 	if hot_dock != nil && active_dock == nil && input.buttons[0] & Input_State.PRESS == Input_State.PRESS && input.modifiers[2] {
 		active_dock = hot_dock;
-
 	}
 
 	// pull out floating docks, and sort by click time
 	dynamic_docks: [dynamic]^Dock;
-	defer free(dynamic_docks);
+	defer delete(dynamic_docks);
 
 	for _, i in docks {
 		using dock := docks[i];
@@ -489,8 +490,57 @@ newframe :: proc() {
 		}
 	}
 
-	if (input.buttons[0]&1 == 0) {
+	if (input.buttons[0]&Input_State(1) == Input_State(0)) {
 		active_dock = nil;
+	}
+
+	if hot_dock != nil && hot_dock.slot != FLOAT {
+		using hot_dock;
+
+		start_tab := hot_dock;
+		for start_tab.prev_tab != nil do start_tab = start_tab.prev_tab;
+
+		i := 0;
+		at_x := f32(5.0);
+		for start_tab != nil {
+			if input.buttons[0] == Input_State.PRESS && inside_rect(Rect{anchor + Vec2{at_x, 5.0}, Vec2{50.0, 25.0}}, input.mouse_position){
+				start_tab2 := hot_dock;
+				for start_tab2.prev_tab != nil { start_tab2 = start_tab2.prev_tab; } 
+
+				for start_tab2 != nil {
+					start_tab2.active = false;
+					start_tab2 = start_tab2.next_tab;
+				}
+				start_tab.active = true;
+				break;
+			}
+
+			at_x += 55.0;
+			start_tab = start_tab.next_tab;
+			i += 1;
+		}
+	}
+
+	if active_dock != nil && active_dock.slot != FLOAT {
+		using active_dock;
+
+		start_tab := active_dock;
+		for start_tab.prev_tab != nil do start_tab = start_tab.prev_tab;
+
+		i := 0;
+		at_x := f32(5.0);
+		for start_tab != nil {
+			if inside_rect(Rect{Vec2{at_x, 5.0}, Vec2{50.0, 25.0}}, start_tab.clicked_at) {
+				if math.length(start_tab.clicked_at + start_tab.anchor - input.mouse_position) > 20.0 {
+					fmt.println("should detach", start_tab.name);
+					//detach(&docks, start_tab)
+				}
+				break;
+			}
+			at_x += 55.0;
+			start_tab = start_tab.next_tab;
+			i += 1;
+		}
 	}
 
 
@@ -517,13 +567,13 @@ current_iteration := 0;
 endframe :: proc() {
 
 	// move floating dock
-	if active_dock != nil && active_dock.slot == FLOAT && active_ptr == 0 {
+	if active_dock != nil /*&& active_dock.slot == FLOAT*/ /*&& active_ptr == 0*/ {
 		if (input.buttons[0] == Input_State.PRESS) {
 			active_dock.time_clicked = f64(current_iteration);
 			active_dock.clicked_at = input.mouse_position - active_dock.anchor;
 		}
 
-		if input.buttons[0] & 1 == 1 {
+		if active_dock.slot == FLOAT && input.buttons[0] & Input_State(1) == Input_State(1) {
 			active_dock.anchor = input.mouse_position - active_dock.clicked_at;
 		}
 	}
@@ -541,7 +591,7 @@ endframe :: proc() {
 	clear(&input.input_runes);
 
 	for _, i in input.buttons {
-		input.buttons[i] = Input_State(input.buttons[i] & 1);
+		input.buttons[i] = input.buttons[i] & Input_State(1);
 	}
 
 	input.mousewheel_delta = 0.0;
@@ -549,7 +599,7 @@ endframe :: proc() {
 }
 
 reset :: proc() {
-	for _ in docks[1..] {
+	for _ in docks[1:] {
 		dock := pop(&docks);
 		free(dock);
 	}
@@ -565,6 +615,8 @@ begin_dock :: proc(search_name: string) -> bool {
 	if dock == nil {
 		// unknown dock, make a new floating one
 		dock = append_return(&docks);
+		dock.active, dock.opened, dock.slot, dock.time_clicked, dock.clicked_at = true, true, Dock_Slot.FLOAT, -1.0, Vec2{};
+
 
 		size = Vec2{f32(window_size[0]), f32(window_size[1])}/2.0;
 		anchor = size - size/2.0;
