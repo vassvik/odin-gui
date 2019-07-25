@@ -4,8 +4,8 @@ import	"core:fmt";
 import	"core:math";
 import	"core:strings";
 
-import	"shared:odin-glfw";
-import	"shared:odin-gl";
+import glfw "shared:odin-glfw";
+import gl "shared:odin-gl";
 import font_gl "shared:odin-gl_font";
 
 //using import "shared:random"
@@ -120,7 +120,7 @@ main :: proc() {
 
 		//
 		glfw.poll_events();
-		if glfw.get_key(window, glfw.KEY_ESCAPE) do glfw.set_window_should_close(window, true);
+		if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS do glfw.set_window_should_close(window, true);
 
 		if input.keys[glfw.KEY_SPACE] == Input_State.PRESS do reset();
 
@@ -345,7 +345,7 @@ windowsize_callback :: proc"c"(window: glfw.Window_Handle, width, height: i32) {
 	window_size = [2]int{int(width), int(height)};
 }
 
-char_callback :: proc"c"(window: glfw.Window_Handle, c: u32) {
+char_callback :: proc"c"(window: glfw.Window_Handle, c: rune) {
 	append(&input.input_runes, rune(c));
 }
 
